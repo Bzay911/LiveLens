@@ -1,37 +1,186 @@
-import React from "react";
-import { View, TouchableOpacity, Text } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import { View, TouchableOpacity, Text, Animated, Easing } from "react-native";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
+import { useTextContext } from "@/context/TextContext";
+import { Audio } from 'expo-av';
+
+type CenterButtonState = "default" | "camera" | "listening";
 
 const CustomTabBar: React.FC<BottomTabBarProps> = ({
   state,
   descriptors,
   navigation,
 }) => {
+  const [centerState, setCenterState] = useState<CenterButtonState>("default");
+  // Animation for the three dots
+  const dotAnim = useRef(new Animated.Value(0)).current;
+  const { text, setText } = useTextContext();
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+
+
+  useEffect(() => {
+    if (centerState === "listening") {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(dotAnim, {
+            toValue: 3,
+            duration: 600,
+            useNativeDriver: false,
+            easing: Easing.linear,
+          }),
+          Animated.timing(dotAnim, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: false,
+          }),
+        ])
+      ).start();
+    } else {
+      dotAnim.stopAnimation();
+      dotAnim.setValue(0);
+    }
+  }, [centerState]);
+
+
+  const handleCenterPress = () => {
+    if (centerState === "default") {
+      setCenterState("camera");
+      navigation.navigate("visualizerScreen");
+    } else if (centerState === "camera") {
+      setCenterState("listening");
+      // start live AI listening logic here
+      startRecording();
+    } else if (centerState === "listening") {
+      setCenterState("default");
+      // stop listening logic here
+      stopRecording();
+    }
+  };
+
+  const getCenterIcon = () => {
+    switch (centerState) {
+      case "default":
+        return "sparkles-sharp";
+      case "camera":
+        return "mic-sharp";
+      case "listening":
+        return "ellipse"; 
+    }
+  };
+
+  const renderListeningDots = () => {
+    if (centerState !== "listening") return null;
+
+    const dots = [0, 1, 2];
+    return (
+      <View className="flex-row absolute center ">
+        {dots.map((i) => {
+          const height = dotAnim.interpolate({
+            inputRange: [0, 1, 2, 3],
+            outputRange: [4, 8, 4, 4],
+          });
+          return (
+            <Animated.View
+              key={i}
+              style={{
+                width: 4,
+                height,
+                backgroundColor: "white",
+                borderRadius: 2,
+                marginHorizontal: 2,
+              }}
+            />
+          );
+        })}
+      </View>
+    );
+  };
+
+  const startRecording = async () => {
+    try{
+      await Audio.requestPermissionsAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const {recording} = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(recording);
+      console.log('Recording started');
+
+    }catch(error){
+      console.error("Failed to start recording", error);
+    }
+  }
+
+  const stopRecording = async () => {
+    console.log('Stopping recording..');
+    setRecording(null);
+    if(recording){
+      await recording?.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      console.log('Recording stopped and stored at', uri);
+      // You can now send 'uri' to your backend or process it as needed
+      playRecording();
+    }
+  }
+
+  const playRecording = async () => {
+    if(!recording) return;
+    const uri = recording.getURI();
+    if(!uri) return;
+  
+  try {
+    const { sound } = await Audio.Sound.createAsync(
+      { uri },
+      { shouldPlay: true } 
+    );
+    setSound(sound);
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        sound.unloadAsync();
+        setSound(null);
+      }
+    });
+  } catch (error) {
+    console.error("Error playing recording:", error);
+  }
+  }
+
   return (
-    <View 
-    style={{
-    shadowColor: "#7437ff",             
-    shadowOffset: { width: 0, height: 6 }, 
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,                     
-  }}
-    className="absolute bottom-2 w-full shadow-sm">
+    <View
+      style={{
+        shadowColor: "#7437ff",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 8,
+      }}
+      className="absolute bottom-2 w-full"
+    >
+      {/* Center Button */}
       <TouchableOpacity
-        onPress={() => navigation.navigate("visualizerScreen")}
+        onPress={handleCenterPress}
         style={{
           shadowColor: "#7437ff",
           shadowOffset: { width: 2, height: 6 },
           shadowOpacity: 0.3,
           shadowRadius: 6,
-          elevation: 8, 
+          elevation: 8,
         }}
         className="bg-[#7437ff] w-20 h-20 rounded-full z-10 items-center justify-center absolute bottom-[65%] left-[48.5%] translate-x-[-32px] shadow-lg"
       >
-        <Ionicons name="sparkles-sharp" size={40} color="white" />
+        {centerState === "listening" ? (
+          renderListeningDots()
+        ) : (
+          <Ionicons name={getCenterIcon() as any} size={40} color="white" />
+        )}
       </TouchableOpacity>
+
       {/* SVG Background */}
       <Svg height={100} viewBox="0 0 406 100">
         <Path
@@ -50,8 +199,8 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({
             options.tabBarLabel !== undefined
               ? options.tabBarLabel
               : options.title !== undefined
-                ? options.title
-                : route.name;
+              ? options.title
+              : route.name;
 
           const Icon = options.tabBarIcon
             ? options.tabBarIcon({
