@@ -51,7 +51,12 @@
         {
           "cameraPermission": "Allow LiveLens to access your camera"
         }
-      ]
+      ],
+      [
+      "expo-audio",{
+        "microphonePermission": "Allow LiveLens to access your microphone"
+      }
+    ]
     ],
     "experiments": {
       "typedRoutes": true,

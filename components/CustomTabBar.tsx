@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, TouchableOpacity, Text, Animated, Easing } from "react-native";
+import { View, TouchableOpacity, Text, Animated, Easing, Alert } from "react-native";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { useTextContext } from "@/context/TextContext";
-import { Audio } from 'expo-av';
+import { useRecording } from "@/context/RecordingContext";
 
 type CenterButtonState = "default" | "camera" | "listening";
 
@@ -14,12 +14,9 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({
   navigation,
 }) => {
   const [centerState, setCenterState] = useState<CenterButtonState>("default");
-  // Animation for the three dots
-  const dotAnim = useRef(new Animated.Value(0)).current;
+  const dotAnim = useRef(new Animated.Value(0)).current;   // Animation for the three dots
   const { text, setText } = useTextContext();
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-
+  const {startRecording, stopRecording} = useRecording();
 
   useEffect(() => {
     if (centerState === "listening") {
@@ -45,18 +42,18 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({
   }, [centerState]);
 
 
-  const handleCenterPress = () => {
+  const handleCenterPress = async () => {
     if (centerState === "default") {
       setCenterState("camera");
       navigation.navigate("visualizerScreen");
     } else if (centerState === "camera") {
-      setCenterState("listening");
       // start live AI listening logic here
-      startRecording();
+      setCenterState("listening");
+      await startRecording();
     } else if (centerState === "listening") {
       setCenterState("default");
       // stop listening logic here
-      stopRecording();
+      await stopRecording();
     }
   };
 
@@ -99,57 +96,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({
     );
   };
 
-  const startRecording = async () => {
-    try{
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-      const {recording} = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
-      console.log('Recording started');
-
-    }catch(error){
-      console.error("Failed to start recording", error);
-    }
-  }
-
-  const stopRecording = async () => {
-    console.log('Stopping recording..');
-    setRecording(null);
-    if(recording){
-      await recording?.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      console.log('Recording stopped and stored at', uri);
-      // You can now send 'uri' to your backend or process it as needed
-      playRecording();
-    }
-  }
-
-  const playRecording = async () => {
-    if(!recording) return;
-    const uri = recording.getURI();
-    if(!uri) return;
   
-  try {
-    const { sound } = await Audio.Sound.createAsync(
-      { uri },
-      { shouldPlay: true } 
-    );
-    setSound(sound);
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
-        sound.unloadAsync();
-        setSound(null);
-      }
-    });
-  } catch (error) {
-    console.error("Error playing recording:", error);
-  }
-  }
 
   return (
     <View
