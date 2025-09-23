@@ -16,7 +16,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({
   const [centerState, setCenterState] = useState<CenterButtonState>("default");
   const dotAnim = useRef(new Animated.Value(0)).current;   // Animation for the three dots
   const { text, setText } = useTextContext();
-  const {startRecording, stopRecording} = useRecording();
+  const {startRecording, stopRecording, sendRecording} = useRecording();
 
   useEffect(() => {
     if (centerState === "listening") {
@@ -53,7 +53,12 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({
     } else if (centerState === "listening") {
       setCenterState("default");
       // stop listening logic here
-      await stopRecording();
+      const uri = await stopRecording();
+      if(uri){
+        await sendRecording(uri);
+      } else {
+        Alert.alert("Recording Error", "No audio recorded.");
+      }
     }
   };
 
